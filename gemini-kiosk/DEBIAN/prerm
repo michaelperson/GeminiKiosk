@@ -1,0 +1,6 @@
+#!/bin/bash
+set -e
+
+# Arrêt du service avant la désinstallation
+systemctl stop gemini_kiosk_settings || true
+systemctl disable gemini_kiosk_settings || true

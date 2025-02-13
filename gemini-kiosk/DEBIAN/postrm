@@ -1,0 +1,9 @@
+#!/bin/bash
+set -e
+
+# Nettoyage après désinstallation
+if [ "$1" = "purge" ]; then
+    rm -rf /var/gemini
+    rm -f /etc/systemd/system/gemini_kiosk_settings.service
+    systemctl daemon-reload
+fi

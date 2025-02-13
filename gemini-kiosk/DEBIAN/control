@@ -1,0 +1,10 @@
+Package: gemini-kiosk
+Version: 1.4.0
+Section: web
+Priority: optional
+Architecture: all
+Maintainer: Cognitic Sprl <michael.person@cognitic.be>
+Description: Application Gemini-Kiosk Settings et Background
+ Une application Flask pour gérer les paramètres Gemini Kiosk et une application pour les échanges avec Gemini
+ .
+ Cette application fournit une interface web pour la configuration et un service d'arrière plan pour l'application principale

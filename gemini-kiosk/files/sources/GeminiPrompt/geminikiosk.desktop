@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=GeminiKiosk
+Exec=/var/gemini/.venv/bin/python3 "/var/gemini/sources/GeminiPrompt/app.py"
+Type=Application
+Terminal=true
+Icon=/var/gemini/sources/WebServer/static/img/geminikiosk.png

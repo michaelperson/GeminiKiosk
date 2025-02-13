@@ -1,0 +1,17 @@
+[Unit]
+Description=Service Gemini Settings Application
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/gemini/sources/WebServer
+Environment=FLASK_APP=app.py
+Environment=FLASK_ENV=production
+ExecStart=/var/gemini/.venv/bin/python3 /var/gemini/sources/WebServer/app.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

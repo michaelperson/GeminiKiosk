@@ -1,0 +1,66 @@
+#!/bin/sh
+set -e
+
+# Installation des paquets requis
+# apt-get update
+# apt-get install -y python3 python3-pip python3.11-venv cmake libpcsclite-dev fonts-liberation
+
+# Définition du répertoire
+DIR="/var/gemini/"
+# Création du répertoire si nécessaire
+if [ ! -d "$DIR" ]; then
+    mkdir -p "$DIR"
+    echo "Directory $DIR created."
+else
+    echo "Directory $DIR already exists."
+    rm -rf Répertoire-Simple
+    rm -f /etc/systemd/system/gemini_kiosk_settings.service
+    systemctl daemon-reload
+    mkdir -p "$DIR"
+    echo "Directory $DIR created."
+fi
+
+# Configuration des permissions
+chmod 777 "$DIR"
+
+
+
+# Copie des fichiers sources (déjà dans la bonne structure dans le paquet)
+cp -R -i files/sources "$DIR"
+cp -R -i files/sources/prompts.csv "$DIR"
+cp -R -i files/sources/launch.sh "$DIR"
+echo "Fichiers copiés"
+chmod 777 "$DIR/sources/GeminiPrompt/.env"
+chmod 777 "$DIR/launch.sh"
+chmod 777 "$DIR/prompts.csv"
+# Création et configuration de l'environnement Python
+python3 -m venv "$DIR/.venv"
+. "$DIR/.venv/bin/activate"
+pip install -r "$DIR/sources/requirementgemini.txt"
+
+# Configuration des permissions et exécution du script d'installation
+chmod +x "$DIR/sources/gemini_kiosk_settings_installer.sh"
+
+# Installation du service systemd
+cp "$DIR/sources/gemini_kiosk_settings.service" /etc/systemd/system/
+echo "Installation du service"
+"$DIR/sources/gemini_kiosk_settings_installer.sh"
+
+# Activation et démarrage du service
+systemctl daemon-reload
+systemctl enable gemini_kiosk_settings
+systemctl start gemini_kiosk_settings
+ 
+ 
+ #copie du fcihier de lancement
+ cp $DIR/launch.sh ~
+ chmod +x ~/launch.sh
+#ajout de l'icone de lancement du Kiosk
+echo "Ajout des icones de lancement"
+chmod +x "$DIR/sources/GeminiPrompt/geminikiosk.desktop"
+mkdir -p ~/.local/share/applications/
+cp -R "$DIR/sources/GeminiPrompt/geminikiosk.desktop" ~/.local/share/applications/
+chmod +x "$DIR/sources/geminikiosksettings.desktop" 
+cp -R "$DIR/sources/geminikiosksettings.desktop" ~/.local/share/applications/
+update-desktop-database ~/.local/share/applications
+

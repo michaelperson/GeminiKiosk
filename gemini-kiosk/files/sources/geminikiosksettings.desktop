@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=GeminiKioskSettings
+Exec=/opt/google/chrome/google-chrome "http://127.0.0.1:5000/"
+Type=Application
+Terminal=false
+Icon=/var/gemini/sources/WebServer/static/img/geminikiosk.png

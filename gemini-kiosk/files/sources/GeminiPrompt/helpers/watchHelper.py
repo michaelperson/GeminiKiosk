@@ -6,9 +6,30 @@ class WatchHelper:
     initialHandles=None
     def __init__(self):
         #  Script pour ajouter un bouton sur la page
+       
         
+        self.inject_button_script=""" 
         
-        self.inject_button_script=""" const button = document.createElement('a');
+           document.body.addEventListener('click', function(event) 
+           {
+                let target = event.target;
+                console.log('interception');
+            
+                console.log(target.tagName );
+                // Vérifie si l'élément cliqué est un lien (<a>)
+                while (target && target.tagName !== 'A') 
+                {
+                    target = target.parentElement;
+                }
+
+                if (target && target.tagName === 'A' && target.getAttribute('target') === '_blank') 
+                {
+                    event.preventDefault();  // Empêche l'ouverture d'un nouvel onglet
+                    window.location.href = target.href;  // Redirige vers le même onglet
+                }
+            });
+        
+           const button = document.createElement('a');
   
 
             button.id = 'close-all-btn-gemini';
@@ -54,8 +75,7 @@ class WatchHelper:
          self.initialHandles =driver.window_handles
          waitTime = int(os.environ.get('InactivityTimeMinutes'))   # exemple 300 secondes = 5 minutes 
          while True:
-             time.sleep(2)
-             intervalle_check = 2  # Vérification toutes les 30 secondes         
+             time.sleep(intervalle_check)       
              current_handles = driver.window_handles
              if len(current_handles) > 1 : 
                 self.inject_button(driver)  # Injecter le bouton dans le nouvel onglet
@@ -68,8 +88,10 @@ class WatchHelper:
             dernier_contenu = driver.page_source  # Contenu initial de la page        
             intervalle_check = 2  # Vérification toutes les 30 secondes       
             waitTime = int(os.environ.get('InactivityTimeMinutes'))   # exemple 300 secondes = 5 minutes
+            print(waitTime)
             while True:                
                 time.sleep(intervalle_check)
+                
                 try:
                     nouveau_contenu = driver.page_source
                 except:
@@ -84,6 +106,7 @@ class WatchHelper:
                     dernier_contenu = nouveau_contenu 
 
                 if temps_inactif >= waitTime:
+                  
                     self.FermerOngletSupp(driver) 
                     driver.switch_to.window(driver.window_handles[0])
                     driver.get(os.environ.get('DefaultUrl'))
@@ -149,24 +172,32 @@ class WatchHelper:
 
         # Revenir à l'onglet actif
         try:
-            driver.switch_to.window(driver.window_handle[0])
+            driver.switch_to.window(driver.window_handles[0])
         except:
             print("End of closing process")
 
      
     # Fonction pour injecter le bouton dans un onglet donné
     def inject_button(self,driver):
-         # Vérifier si le bouton existe déjà
-        button_exists = driver.execute_script("""return document.getElementById('close-all-btn-gemini') !== null;""")
-    
-        if not button_exists:
-            print("bouton ajout")
-            
-            surveillance_thread = threading.Thread(target=self.surveiller_Url, args=(driver,))
-            surveillance_thread.start() 
-            current_index = 0
-            window_handles = driver.window_handles
-            # Fermer les onglets à droite (index supérieur à l'onglet actif)
-            for handle in window_handles[current_index + 1:]:                 
-                    driver.switch_to.window(handle)
-                    driver.execute_script(self.inject_button_script)
+        try:
+            # Vérifier si le bouton existe déjà
+            current =driver.window_handles[len(driver.window_handles)-1]
+            driver.switch_to.window(current) 
+            button_exists = driver.execute_script("""return document.getElementById('close-all-btn-gemini') !== null;""")
+        
+            if not button_exists:
+                print("bouton ajout")            
+                surveillance_thread = threading.Thread(target=self.surveiller_Url, args=(driver,))
+                surveillance_thread.start()  
+                driver.execute_script(self.inject_button_script)  
+            print(len(driver.window_handles))  
+            # si on a plusieurs onglets
+            if  len(driver.window_handles)>2:
+                
+                print("trop de tab")
+                driver.switch_to.window(driver.window_handles[1]) 
+                driver.close()  
+                driver.switch_to.window(current) 
+                    
+        except Exception as e:
+            print(e)

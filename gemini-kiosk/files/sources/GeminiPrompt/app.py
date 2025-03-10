@@ -27,6 +27,9 @@ driver=None
 
 recent_tags={}
 
+
+
+
 # récupération tag
 def on_rfid_tag(tag):
     if(tag==""):
@@ -51,10 +54,11 @@ def on_rfid_tag(tag):
     if(prompt!=None):
         thread = pHelper.run_in_thread(prompt, driver)
         thread.join()  # Attendre que le thread se termine avant de continuer
-        surveillance_thread = threading.Thread(target=wHelper.surveiller_inactivite, args=(driver,))
-        surveillance_thread.start()        
-        surveillance_thread = threading.Thread(target=wHelper.surveillance_onglet, args=(driver,))
-        surveillance_thread.start()
+        # surveillance_thread = threading.Thread(target=wHelper.surveiller_inactivite, args=(driver,))
+        # surveillance_thread.start()        
+        # surveillance_thread = threading.Thread(target=wHelper.surveillance_onglet, args=(driver,))
+        # surveillance_thread.start()
+        wHelper.demarrer_surveillance(driver) 
     # Nettoyer le dictionnaire pour éviter qu'il ne grossisse indéfiniment
     recent_tags = {t: ts for t, ts in recent_tags.items() if current_time - ts < 5}
 
@@ -92,21 +96,36 @@ if __name__ == "__main__":
     driver.get(os.environ.get('DefaultUrl'))
     
     # Ouvrir la page de gemini 
-    reader = RFIDPCSCReader()
-    reader.set_callback(on_rfid_tag)
-    reader.start()
-    surveillance_thread = threading.Thread(target=wHelper.surveiller_inactivite, args=(driver,))
-    surveillance_thread.start()        
-    surveillance_thread = threading.Thread(target=wHelper.surveillance_onglet, args=(driver,))
-    surveillance_thread.start()
+    #reader = RFIDPCSCReader()
+    #reader.set_callback(on_rfid_tag)
+   # reader.start()
+    # surveillance_thread = threading.Thread(target=wHelper.surveiller_inactivite, args=(driver,))
+    # surveillance_thread.start()        
+    # surveillance_thread = threading.Thread(target=wHelper.surveillance_onglet, args=(driver,))
+    # surveillance_thread.start() 
+    wHelper.demarrer_surveillance(driver) 
     
     try:
         while True:
             sleep(1)
+            if not driver.window_handles:  
+                print("Le navigateur est fermé.")
+                driver.quit()
     except KeyboardInterrupt:
-        try:
-            reader.stop()
-        except:
+        # try:
+        #    # reader.stop()
+        # except:
+            
             print("Reader Disconnected")
+    except:
+        # try:
+        #    # reader.stop()
+        # except:
+            
+            print("Reader Disconnected")
+       
+    finally:
 
+        wHelper.arreter_surveillance() 
+        driver.quit()
     print("Apllication closed")

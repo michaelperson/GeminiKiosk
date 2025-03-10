@@ -1,12 +1,13 @@
 import time 
 import os 
+import logging
+import threading 
 
-import threading
 class WatchHelper:
     initialHandles=None
     def __init__(self):
-        #  Script pour ajouter un bouton sur la page
-       
+              
+        self.initial_handles: Optional[List[str]] = None
         
         self.inject_button_script=""" 
         
@@ -67,8 +68,12 @@ class WatchHelper:
                                 window.close();
                             };
             document.body.appendChild(button);"""
+        # Flag pour contrôler les threads
+        self.running = True
+        # Threads actifs
+        self.active_threads = [] 
+    
 
-  
     def surveillance_onglet(self,driver):
         try:
          intervalle_check = 2  # Vérification toutes les 30 secondes
@@ -85,26 +90,30 @@ class WatchHelper:
     def surveiller_inactivite(self,driver):
         try:
             temps_inactif = 0
-            dernier_contenu = driver.page_source  # Contenu initial de la page        
+            dernier_contenu = hash(driver.page_source[:1000]) # Contenu initial de la page        
             intervalle_check = 2  # Vérification toutes les 30 secondes       
             waitTime = int(os.environ.get('InactivityTimeMinutes'))   # exemple 300 secondes = 5 minutes
-            print(waitTime)
+            #print(waitTime)
             while True:                
                 time.sleep(intervalle_check)
                 
                 try:
-                    nouveau_contenu = driver.page_source
+                    # Libérer les ressources inutilisées périodiquement
+                    if hasattr(driver, "execute_cdp_cmd"):
+                        driver.execute_cdp_cmd("Network.clearBrowserCache", {})
+                    nouveau_contenu = hash(driver.page_source[:1000])
                 except:
                     driver.switch_to.window(driver.window_handles[0]) 
-                    nouveau_contenu = driver.page_source
-
-                #print(temps_inactif)
+                    nouveau_contenu = hash(driver.page_source[:1000])
+                print("avant")
+                print(temps_inactif)
                 if nouveau_contenu == dernier_contenu:
                     temps_inactif += intervalle_check
                 else:
                     temps_inactif = 0  # Réinitialiser le compteur d'inactivité
                     dernier_contenu = nouveau_contenu 
-
+                print("apres")
+                print(temps_inactif)
                 if temps_inactif >= waitTime:
                   
                     self.FermerOngletSupp(driver) 
@@ -122,7 +131,7 @@ class WatchHelper:
             intervalle_check = 2  # Vérification toutes les 30 secondes       
             waitTime = int(os.environ.get('InactivityTimeMinutes'))   # exemple 300 secondes = 5 minutes
             while True:                
-                time.sleep(intervalle_check)
+                time.sleep(intervalle_check) 
                 try:
                     nouveau_contenu = driver.current_url
                 except:
@@ -143,17 +152,7 @@ class WatchHelper:
         except:
             print("FIn de la surveillance Url")   
 
-
-    def surveillanceLog(self,driver):
-        logs = driver.get_log("browser")  # Récupérer les logs de la console
-        for log in logs:
-            if "close_all_except_first" in log["message"]:
-                self.FermerOngletSupp(driver)
-                print("Tous les onglets sauf le premier ont été fermés.")
-                self.initialHandles=driver.window_handles
-                return True
-        return False
-
+ 
     def FermerOngletSupp(self, driver):
         # Obtenir les handles des fenêtres ouvertes
         window_handles = driver.window_handles 
@@ -186,11 +185,16 @@ class WatchHelper:
             button_exists = driver.execute_script("""return document.getElementById('close-all-btn-gemini') !== null;""")
         
             if not button_exists:
-                print("bouton ajout")            
+                print("bouton ajout")     
+                
+                driver.execute_script(self.inject_button_script)    
                 surveillance_thread = threading.Thread(target=self.surveiller_Url, args=(driver,))
+                surveillance_thread.daemon=True
                 surveillance_thread.start()  
-                driver.execute_script(self.inject_button_script)  
-            print(len(driver.window_handles))  
+                self.active_threads.append(surveillance_thread)  
+                print("bouton cree")
+                self.active_threads = [t for t in self.active_threads if t.is_alive()]
+            
             # si on a plusieurs onglets
             if  len(driver.window_handles)>2:
                 
@@ -201,3 +205,40 @@ class WatchHelper:
                     
         except Exception as e:
             print(e)
+
+    def demarrer_surveillance(self, driver):
+        """Démarre tous les threads de surveillance en parallèle."""
+        print("Démarrage de la surveillance complète")
+        self.running = True
+        
+        # Thread pour surveiller l'ouverture de nouveaux onglets
+        onglet_thread = threading.Thread(target=self.surveillance_onglet, args=(driver,))
+        onglet_thread.daemon = True
+        
+        # Thread pour surveiller l'inactivité
+        inactivite_thread = threading.Thread(target=self.surveiller_inactivite, args=(driver,))
+        inactivite_thread.daemon = True
+        
+        # Démarrer les threads
+        onglet_thread.start()
+        inactivite_thread.start()
+        
+        # Garder une référence aux threads actifs
+        self.active_threads = [onglet_thread, inactivite_thread]
+        
+        print("Tous les threads de surveillance sont démarrés")
+        
+        return onglet_thread, inactivite_thread
+    
+    def arreter_surveillance(self):
+        """Arrête tous les threads de surveillance."""
+        print("Arrêt de la surveillance")
+        self.running = False
+        
+        # Attendre que tous les threads se terminent (avec timeout)
+        for thread in self.active_threads:
+            if thread.is_alive():
+                thread.join(timeout=5)
+        
+        self.active_threads = []
+        print("Tous les threads de surveillance sont arrêtés")

@@ -96,9 +96,9 @@ if __name__ == "__main__":
     driver.get(os.environ.get('DefaultUrl'))
     
     # Ouvrir la page de gemini 
-    #reader = RFIDPCSCReader()
-    #reader.set_callback(on_rfid_tag)
-   # reader.start()
+    reader = RFIDPCSCReader()
+    reader.set_callback(on_rfid_tag)
+    reader.start()
     # surveillance_thread = threading.Thread(target=wHelper.surveiller_inactivite, args=(driver,))
     # surveillance_thread.start()        
     # surveillance_thread = threading.Thread(target=wHelper.surveillance_onglet, args=(driver,))
@@ -112,15 +112,15 @@ if __name__ == "__main__":
                 print("Le navigateur est fermé.")
                 driver.quit()
     except KeyboardInterrupt:
-        # try:
-        #    # reader.stop()
-        # except:
+        try:
+           reader.stop()
+        except:
             
             print("Reader Disconnected")
     except:
-        # try:
-        #    # reader.stop()
-        # except:
+        try:
+           reader.stop()
+        except:
             
             print("Reader Disconnected")
        

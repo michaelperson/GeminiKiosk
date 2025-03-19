@@ -52,6 +52,7 @@ def on_rfid_tag(tag):
     csvHelper = CsvHelper(os.environ.get('CSVPath'))
     prompt= csvHelper.get_prompt(prompt,os.environ.get('Lang'))
     if(prompt!=None):
+        wHelper.arreter_surveillance()  
         thread = pHelper.run_in_thread(prompt, driver)
         thread.join()  # Attendre que le thread se termine avant de continuer
         # surveillance_thread = threading.Thread(target=wHelper.surveiller_inactivite, args=(driver,))
@@ -103,25 +104,24 @@ if __name__ == "__main__":
     # surveillance_thread.start()        
     # surveillance_thread = threading.Thread(target=wHelper.surveillance_onglet, args=(driver,))
     # surveillance_thread.start() 
-    wHelper.demarrer_surveillance(driver) 
-    
+    # wHelper.demarrer_surveillance(driver)  
     try:
         while True:
-            sleep(1)
+             
+            print(wHelper.temps_inactif)
             if not driver.window_handles:  
                 print("Le navigateur est fermé.")
                 driver.quit()
     except KeyboardInterrupt:
         try:
-           reader.stop()
-        except:
-            
+            reader.stop()
+        except:            
+            print("key Disconnected")
             print("Reader Disconnected")
     except:
         try:
-           reader.stop()
-        except:
-            
+            reader.stop()
+        except:            
             print("Reader Disconnected")
        
     finally:

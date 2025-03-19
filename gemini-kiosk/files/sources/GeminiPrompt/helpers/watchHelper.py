@@ -1,22 +1,20 @@
 import time 
 import os 
 import logging
-import threading 
+import threading
+from typing import List, Optional
 
 class WatchHelper:
-    initialHandles=None
     def __init__(self):
-              
         self.initial_handles: Optional[List[str]] = None
         
-        self.inject_button_script=""" 
-        
+        self.inject_button_script = """
            document.body.addEventListener('click', function(event) 
            {
                 let target = event.target;
                 console.log('interception');
             
-                console.log(target.tagName );
+                console.log(target.tagName);
                 // Vérifie si l'élément cliqué est un lien (<a>)
                 while (target && target.tagName !== 'A') 
                 {
@@ -32,7 +30,6 @@ class WatchHelper:
         
            const button = document.createElement('a');
   
-
             button.id = 'close-all-btn-gemini';
             // Styles pour le positionnement
             button.style.position = 'fixed'; // Fixe le bouton à l'écran
@@ -64,171 +61,201 @@ class WatchHelper:
             button.appendChild(logo);
             button.appendChild(document.createTextNode('Back to Gemini'));
             
-                            button.onclick = () => {
-                                window.close();
-                            };
+            button.onclick = () => {
+                window.close();
+            };
             document.body.appendChild(button);"""
+        
         # Flag pour contrôler les threads
         self.running = True
         # Threads actifs
-        self.active_threads = [] 
+        self.active_threads = []
+        
+        # Variables centralisées pour suivre l'inactivité
+        self.temps_inactif = 0
+        self.dernier_contenu_page = None
+        self.dernier_onglet_actif = None
+        self.lock = threading.Lock()  # Pour protéger l'accès aux variables partagées
+        
+        # Intervalle et temps d'attente
+        self.intervalle_check = 2  # Vérification toutes les 2 secondes
     
+    def reset_inactivity(self):
+        """Réinitialise le compteur d'inactivité de manière thread-safe"""
+        with self.lock:
+            self.temps_inactif = 0
+            print("Compteur d'inactivité réinitialisé")
+            
+    def increment_inactivity(self):
+        """Incrémente le compteur d'inactivité de manière thread-safe"""
+        with self.lock:
+            self.temps_inactif += self.intervalle_check
+            return self.temps_inactif
 
-    def surveillance_onglet(self,driver):
-        try:
-         intervalle_check = 2  # Vérification toutes les 30 secondes
-         self.initialHandles =driver.window_handles
-         waitTime = int(os.environ.get('InactivityTimeMinutes'))   # exemple 300 secondes = 5 minutes 
-         while True:
-             time.sleep(intervalle_check)       
-             current_handles = driver.window_handles
-             if len(current_handles) > 1 : 
-                self.inject_button(driver)  # Injecter le bouton dans le nouvel onglet
-        except:
-            print("Fin surveillance Onglet")
+    def get_inactivity(self):
+        """Récupère la valeur actuelle du compteur d'inactivité"""
+        with self.lock:
+            return self.temps_inactif
 
-    def surveiller_inactivite(self,driver):
+    def surveillance_onglet(self, driver):
+        """Surveille l'ouverture et le changement d'onglets"""
         try:
-            temps_inactif = 0
-            dernier_contenu = hash(driver.page_source[:1000]) # Contenu initial de la page        
-            intervalle_check = 2  # Vérification toutes les 30 secondes       
-            waitTime = int(os.environ.get('InactivityTimeMinutes'))   # exemple 300 secondes = 5 minutes
-            #print(waitTime)
-            while True:                
-                time.sleep(intervalle_check)
+            self.initial_handles = driver.window_handles
+            self.dernier_onglet_actif = driver.current_window_handle
+            
+            while self.running:
+                time.sleep(self.intervalle_check)
+                
+                try:
+                    # Vérifier si de nouveaux onglets ont été ouverts
+                    current_handles = driver.window_handles
+                    current_handle = driver.current_window_handle
+                    
+                    # Si un nouvel onglet est ouvert
+                    if len(current_handles) > 1:
+                        self.inject_button(driver)
+                    
+                    # Si l'onglet actif a changé
+                    if current_handle != self.dernier_onglet_actif:
+                        print(f"Changement d'onglet détecté: {self.dernier_onglet_actif} -> {current_handle}")
+                        self.dernier_onglet_actif = current_handle
+                        # Réinitialiser le temps d'inactivité car changement d'onglet
+                        self.reset_inactivity()
+                        
+                except Exception as e:
+                    print(f"Erreur lors de la surveillance d'onglet: {e}")
+                    try:
+                        # Essayer de revenir à l'onglet principal
+                        driver.switch_to.window(driver.window_handles[0])
+                        self.dernier_onglet_actif = driver.current_window_handle
+                    except:
+                        pass
+                        
+        except Exception as e:
+            print(f"Fin surveillance Onglet: {e}")
+
+    def surveiller_activite(self, driver):
+        """Thread principal de surveillance qui vérifie le contenu et incrémente le temps d'inactivité"""
+        try:
+            # Initialiser le temps d'attente max
+            wait_time = int(os.environ.get('InactivityTimeMinutes', '5')) 
+            
+            # Initialiser le contenu de la page
+            try:
+                self.dernier_contenu_page = hash(driver.page_source[:1000])
+            except:
+                driver.switch_to.window(driver.window_handles[0])
+                self.dernier_contenu_page = hash(driver.page_source[:1000])
+            
+            while self.running:
+                time.sleep(self.intervalle_check)
                 
                 try:
                     # Libérer les ressources inutilisées périodiquement
                     if hasattr(driver, "execute_cdp_cmd"):
                         driver.execute_cdp_cmd("Network.clearBrowserCache", {})
+                    
+                    # Vérifier le contenu de la page actuelle
                     nouveau_contenu = hash(driver.page_source[:1000])
-                except:
-                    driver.switch_to.window(driver.window_handles[0]) 
-                    nouveau_contenu = hash(driver.page_source[:1000])
-                print("avant")
-                print(temps_inactif)
-                if nouveau_contenu == dernier_contenu:
-                    temps_inactif += intervalle_check
-                else:
-                    temps_inactif = 0  # Réinitialiser le compteur d'inactivité
-                    dernier_contenu = nouveau_contenu 
-                print("apres")
-                print(temps_inactif)
-                if temps_inactif >= waitTime:
-                  
-                    self.FermerOngletSupp(driver) 
-                    driver.switch_to.window(driver.window_handles[0])
-                    driver.get(os.environ.get('DefaultUrl'))
-                    break
-        except:
-            print("Fin de la surveillance inactivite")
-
-                 
-    def surveiller_Url(self,driver):
-        try:   
-            temps_inactif = 0
-            dernier_contenu = driver.page_source  # Contenu initial de la page        
-            intervalle_check = 2  # Vérification toutes les 30 secondes       
-            waitTime = int(os.environ.get('InactivityTimeMinutes'))   # exemple 300 secondes = 5 minutes
-            while True:                
-                time.sleep(intervalle_check) 
-                try:
-                    nouveau_contenu = driver.current_url
-                except:
-                    driver.switch_to.window(driver.window_handles[0]) 
-                    nouveau_contenu = driver.current_url
+                    
+                    # Si le contenu a changé, réinitialiser le compteur d'inactivité
+                    if nouveau_contenu != self.dernier_contenu_page:
+                        print("Changement de contenu détecté")
+                        self.dernier_contenu_page = nouveau_contenu
+                        # Réinitialiser le temps d'inactivité car changement de contenu
+                        self.reset_inactivity()
+                    else:
+                        # Incrémenter le temps d'inactivité si pas de changement
+                        temps_actuel = self.increment_inactivity()
+                        print(f"Temps d'inactivité: {temps_actuel} secondes")
+                        
+                        # Vérifier si le temps d'inactivité a atteint le seuil
+                        if temps_actuel >= wait_time:
+                            print(f"Temps d'inactivité maximum atteint: {temps_actuel} secondes")
+                            self.FermerOngletSupp(driver)
+                            driver.switch_to.window(driver.window_handles[0])
+                            driver.get(os.environ.get('DefaultUrl'))
+                            self.reset_inactivity()  # Réinitialiser après le reset
                 
-                if nouveau_contenu == dernier_contenu:
-                    temps_inactif += intervalle_check
-                else:
-                    temps_inactif = 0  # Réinitialiser le compteur d'inactivité
-                    dernier_contenu = nouveau_contenu 
-
-                if temps_inactif >= waitTime:
-                    self.FermerOngletSupp(driver) 
-                    driver.switch_to.window(driver.window_handles[0])
-                    driver.get(os.environ.get('DefaultUrl'))
-                    break
-        except:
-            print("FIn de la surveillance Url")   
-
- 
-    def FermerOngletSupp(self, driver):
-        # Obtenir les handles des fenêtres ouvertes
-        window_handles = driver.window_handles 
-        # Index de l'onglet gemini
-        current_index = 0
-        cpt=1
-        # Fermer les onglets à droite (index supérieur à l'onglet actif)
-        for handle in window_handles[current_index + 1:]:
-             
-            driver.switch_to.window(handle)
-            try:
-                driver.close()
-            except:
-                print("tab already closed")   
-            cpt=cpt+1 
-
-        # Revenir à l'onglet actif
-        try:
-            driver.switch_to.window(driver.window_handles[0])
-        except:
-            print("End of closing process")
-
-     
-    # Fonction pour injecter le bouton dans un onglet donné
-    def inject_button(self,driver):
-        try:
-            # Vérifier si le bouton existe déjà
-            current =driver.window_handles[len(driver.window_handles)-1]
-            driver.switch_to.window(current) 
-            button_exists = driver.execute_script("""return document.getElementById('close-all-btn-gemini') !== null;""")
-        
-            if not button_exists:
-                print("bouton ajout")     
-                
-                driver.execute_script(self.inject_button_script)    
-                surveillance_thread = threading.Thread(target=self.surveiller_Url, args=(driver,))
-                surveillance_thread.daemon=True
-                surveillance_thread.start()  
-                self.active_threads.append(surveillance_thread)  
-                print("bouton cree")
-                self.active_threads = [t for t in self.active_threads if t.is_alive()]
-            
-            # si on a plusieurs onglets
-            if  len(driver.window_handles)>2:
-                
-                print("trop de tab")
-                driver.switch_to.window(driver.window_handles[1]) 
-                driver.close()  
-                driver.switch_to.window(current) 
+                except Exception as e:
+                    print(f"Erreur lors de la vérification de contenu: {e}")
+                    try:
+                        driver.switch_to.window(driver.window_handles[0])
+                        self.dernier_contenu_page = hash(driver.page_source[:1000])
+                    except:
+                        pass
                     
         except Exception as e:
-            print(e)
+            print(f"Fin de la surveillance d'activité: {e}")
+
+    def FermerOngletSupp(self, driver):
+        """Ferme tous les onglets supplémentaires"""
+        try:
+            # Obtenir les handles des fenêtres ouvertes
+            window_handles = driver.window_handles
+            
+            # Fermer les onglets à droite (index supérieur à l'onglet actif)
+            for handle in window_handles[1:]:
+                driver.switch_to.window(handle)
+                try:
+                    driver.close()
+                except Exception as e:
+                    print(f"Erreur fermeture onglet: {e}")
+            
+            # Revenir à l'onglet actif
+            driver.switch_to.window(driver.window_handles[0])
+        except Exception as e:
+            print(f"Erreur lors de la fermeture des onglets: {e}")
+
+    def inject_button(self, driver):
+        """Injecte le bouton 'Back to Gemini' dans un nouvel onglet"""
+        try:
+            # Passer au dernier onglet ouvert
+            current = driver.window_handles[-1]
+            driver.switch_to.window(current)
+            
+            # Vérifier si le bouton existe déjà
+            button_exists = driver.execute_script("""return document.getElementById('close-all-btn-gemini') !== null;""")
+            
+            if not button_exists:
+                print("Ajout du bouton")
+                driver.execute_script(self.inject_button_script)
+                print("Bouton créé avec succès")
+            
+            # Si on a plus de 2 onglets, fermer le second (garder le premier et le dernier)
+            if len(driver.window_handles) > 2:
+                print("Trop d'onglets ouverts, fermeture du second")
+                driver.switch_to.window(driver.window_handles[1])
+                driver.close()
+                driver.switch_to.window(current)
+                
+        except Exception as e:
+            print(f"Erreur lors de l'injection du bouton: {e}")
 
     def demarrer_surveillance(self, driver):
         """Démarre tous les threads de surveillance en parallèle."""
         print("Démarrage de la surveillance complète")
         self.running = True
+        self.reset_inactivity()  # Réinitialiser le compteur au démarrage
         
         # Thread pour surveiller l'ouverture de nouveaux onglets
         onglet_thread = threading.Thread(target=self.surveillance_onglet, args=(driver,))
         onglet_thread.daemon = True
         
-        # Thread pour surveiller l'inactivité
-        inactivite_thread = threading.Thread(target=self.surveiller_inactivite, args=(driver,))
-        inactivite_thread.daemon = True
+        # Thread pour surveiller l'inactivité (contenu et URL combinés)
+        activite_thread = threading.Thread(target=self.surveiller_activite, args=(driver,))
+        activite_thread.daemon = True
         
         # Démarrer les threads
         onglet_thread.start()
-        inactivite_thread.start()
+        activite_thread.start()
         
         # Garder une référence aux threads actifs
-        self.active_threads = [onglet_thread, inactivite_thread]
+        self.active_threads = [onglet_thread, activite_thread]
         
         print("Tous les threads de surveillance sont démarrés")
         
-        return onglet_thread, inactivite_thread
+        return onglet_thread, activite_thread
     
     def arreter_surveillance(self):
         """Arrête tous les threads de surveillance."""
